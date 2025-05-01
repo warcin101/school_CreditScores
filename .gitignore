@@ -3,7 +3,7 @@
 
 # Poza tymi plikami (nie ignoruj ich)
 !projekt.ipynb
-!kocham_R_xd.R
+!Projekt-3.rmd
 
 # Nie ignoruj pliku .gitignore
 !.gitignore

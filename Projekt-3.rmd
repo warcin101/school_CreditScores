@@ -1,0 +1,340 @@
+---
+title: "Projekt - część opisowa"
+author: "Mateusz Surowiec"
+date: "2025-04-27"
+output:  
+   html_document:
+    code_folding: show
+---
+
+### Część Opisowa
+
+# Wczytanie danych i pakietów
+
+```{r setup, include=FALSE}
+library(readxl)
+library(e1071)
+library(openxlsx)
+library(ggplot2)
+library(gridExtra)
+library(googlesheets4)
+
+
+Dane_projekt <- read_sheet("https://docs.google.com/spreadsheets/d/1ZxsqdQ8NlfZ5etCP9LR1vXNWkIcS6mgcnbc_8L-x-pA/edit?gid=1255751108#gid=1255751108")
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Sprawdzenie danych
+
+```{r}
+str(Dane_projekt)
+sapply(Dane_projekt, class)
+
+# Zmienne:
+# data_akceptacji - data
+# grupa_ryzyka - kategoria
+# kod_partnera - kategoria
+# typ_umowy - kategoria („N” – nowy samochód, „U” – samochód używany, „R” – refinansowanie kredytu)
+# scoring_FICO - liczba
+# okres_kredytu - liczba (miesiące)
+# kwota_kredytu - liczba
+# oproc.refin - liczba (dla typu umowy „R”)
+# oproc_konkur - liczba
+# koszt_pieniadza - liczba
+# oproc_propon - liczba
+# akceptacja_klienta - kategoria (zmienna celu ->  0 = brak akceptacji, 1 = akceptacja )
+
+# Sprawdzenie braków
+sum(is.na(Dane_projekt))
+# nie ma braków
+
+```
+
+# Statystyki opisowe - dla ilościowych
+
+```{r}
+zm_ilosciowe <- c("scoring_FICO", "kwota_kredytu", "oproc_konkur", "koszt_pieniadza", "oproc_propon")
+
+oprocentowanie_refin <- Dane_projekt[Dane_projekt$typ_umowy == "R", ] # osobno, tylko dla typu umowy "R"
+
+# Funkcja do obliczenia statystyk
+calculate_stats <- function(data, var_name) {
+  stats <- c(
+    Mean = mean(data[[var_name]], na.rm = TRUE),
+    Median = median(data[[var_name]], na.rm = TRUE),
+    Max = max(data[[var_name]], na.rm = TRUE),
+    Min = min(data[[var_name]], na.rm = TRUE),
+    SD = sd(data[[var_name]], na.rm = TRUE),
+    Range = diff(range(data[[var_name]], na.rm = TRUE)),
+    Skewness = skewness(data[[var_name]], na.rm = TRUE),
+    Kurtosis = kurtosis(data[[var_name]], na.rm = TRUE),
+    IQR = IQR(data[[var_name]], na.rm = TRUE)
+  )
+  return(stats)
+}
+
+# Obliczenia dla zmiennych ilościowych
+stats_table <- sapply(zm_ilosciowe, function(var) calculate_stats(Dane_projekt, var))
+# Dla zmiennej 'oprocentowanie.refin'
+stats_table_refin <- sapply("oproc_refin", function(var) calculate_stats(oprocentowanie_refin, var))
+
+# Połączenie wyników
+final_stats <- cbind(stats_table, stats_table_refin)
+final_stats <- t(final_stats)
+
+options(scipen = 999)
+print(final_stats)
+write.xlsx(final_stats, file = "Wyniki.xlsx", sheetName = "stat_opis_il", rowNames = TRUE)
+```
+
+```{r}
+# Ustaw układ wykresów 3/3/1
+par(mfrow = c(3, 3))
+
+# Rysowanie wykresów
+for (zm in zm_ilosciowe) {
+  hist(Dane_projekt[[zm]],
+       main = paste("Histogram:", zm),
+       xlab = "",   
+       col = "lightblue",
+       border = "black")
+}
+
+hist(oprocentowanie_refin$oproc_refin,
+     main = "Histogram: oproc_refin",
+     xlab = "",
+     col = "lightblue",
+     border = "black")
+```
+
+
+
+# Tabele liczebności - dla kategorycznych
+
+```{r}
+
+zm_kategotyczne <- c("grupa_ryzyka", "kod_partnera", "okres_kredytu", "typ_umowy", "akceptacja_klienta")
+
+for (var in zm_kategotyczne) {
+
+  cat_table <- table(Dane_projekt[[var]], useNA = "ifany")
+  cat_prop <- prop.table(cat_table)  # Częstości (proporcje)
+  cat_df <- data.frame(
+    Category = names(cat_table),
+    Count = as.vector(cat_table),
+    Proportion = as.vector(cat_prop)
+  )
+  cat("Tabela dla zmiennej:", var, "\n")
+  print(cat_df)
+  cat("\n")
+}
+```
+
+# Histogramy dla kategorycznych
+
+```{r}
+# grupa_ryzyka
+plot1 <- ggplot(Dane_projekt, aes(x = grupa_ryzyka)) +
+  geom_histogram(stat = "count", fill = "skyblue", color = "black") +
+  labs(title = "Histogram dla grupy ryzyka",
+       y = "Liczba obserwacji") + theme_minimal()+
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(hjust = 1, size = 12), 
+    axis.text.y = element_text(size = 10))  
+
+# kod_partnera
+plot2 <- ggplot(Dane_projekt, aes(x = kod_partnera)) +
+  geom_histogram(stat = "count", fill = "yellow", color = "black") +
+  labs(title = "Histogram dla kodu partnera",
+        y = "Liczba obserwacji") + theme_minimal()+
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(hjust = 1, size = 12), 
+    axis.text.y = element_text(size = 10))  
+
+# typ_umowy
+plot3 <- ggplot(Dane_projekt, aes(x = typ_umowy)) +
+  geom_histogram(stat = "count", fill = "green", color = "black") +
+  labs(title = "Histogram dla typu umowy",
+        y = "Liczba obserwacji") + theme_minimal()+
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(hjust = 1, size = 12),  
+    axis.text.y = element_text(size = 10))  
+
+# okres_kredytu
+plot4 <- ggplot(Dane_projekt, aes(x = factor(okres_kredytu))) +
+  geom_bar(fill = "orange", color = "black") +
+  labs(title = "Histogram dla okresu kredytu",
+        y = "Liczba obserwacji") + 
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(hjust = 1, size = 12), 
+    axis.text.y = element_text(size = 10)  
+  )
+
+# akceptacja_klienta
+plot5 <- ggplot(Dane_projekt, aes(x = factor(akceptacja_klienta))) +
+  geom_bar(fill = "red", color = "black") +
+  labs(title = "Histogram dla akceptacji klienta",
+        y = "Liczba obserwacji") + 
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(hjust = 1, size = 12), 
+    axis.text.y = element_text(size = 10)  
+  )
+
+grid.arrange(plot1, plot2, plot3, plot4, ncol = 2, nrow = 2)
+
+print(plot5)
+```
+
+
+
+# Załadowanie danych z utworzonymi zmiennymi pochodnymi oraz potrzebnych bibliotek. Kod tworzący zmienne pochodne został wykonany w pythonie i dodany będzie w osobnym pliku.
+```{r}
+library(Information)
+library(scorecard)
+library(dplyr)
+library(readxl)
+project_data <- read.csv("C:/Users/micha/Downloads/project_data (1).csv")
+
+project_data$kod_partnera <- as.factor(project_data$kod_partnera)
+project_data$grupa_ryzyka <- as.factor(project_data$grupa_ryzyka)
+
+exclude_cols <- c("LP", "data_akceptacji"
+ , "kwota_kredytu", "oproc_refin", 
+                 "oproc_konkur", "koszt_pieniadza", "oproc_propon", 
+                  "umowa_N", "koszt_propon", "koszt_konkur")
+
+vars_to_analyze <- setdiff(names(project_data), c(exclude_cols, "akceptacja_klienta"))
+```
+
+
+# Wstępna analiza IV, bins odgórnie ustalone na 10
+```{r}
+
+# Przygotowanie danych do analizy IV
+iv_data <- project_data[, c(vars_to_analyze, "akceptacja_klienta")]
+
+# Upewnienie się, że zmienna celu jest typu numeric (zgodnie z błędem)
+iv_data$akceptacja_klienta <- as.numeric(as.character(iv_data$akceptacja_klienta))
+
+# Sprawdzenie, czy zmienna celu ma wartości 0 i 1
+cat("Unikalne wartości zmiennej akceptacja_klienta:", unique(iv_data$akceptacja_klienta), "\n")
+
+# Obliczenie IV dla wszystkich zmiennych za pomocą funkcji create_infotables
+# Ta funkcja automatycznie obliczy IV dla wszystkich zmiennych w zbiorze danych
+iv_results <- Information::create_infotables(data = iv_data, 
+                                             y = "akceptacja_klienta", 
+                                             bins = 10,
+                                             parallel = FALSE)
+
+# Wyodrębnienie wyników IV
+iv_values <- iv_results$Summary
+
+# Sortowanie wartości IV w kolejności malejącej
+iv_values <- iv_values[order(-iv_values$IV), ]
+
+# Wyświetlenie wyników
+cat("\n=== Wartości IV dla zmiennych (posortowane) ===\n")
+for (i in 1:nrow(iv_values)) {
+  cat(sprintf("%s: %.4f\n", iv_values$Variable[i], iv_values$IV[i]))
+}
+
+```
+# Próbujemy poprawić IV poprzez iteracyjne dobranie najlepszej wartość binsów dla każdej ze zmiennych
+```{r}
+# Przygotowanie danych do analizy IV
+iv_data <- project_data[, c(vars_to_analyze, "akceptacja_klienta")]
+
+# Upewnienie się, że zmienna celu jest typu numeric
+iv_data$akceptacja_klienta <- as.numeric(as.character(iv_data$akceptacja_klienta))
+
+# Sprawdzenie, czy zmienna celu ma wartości 0 i 1
+cat("Unikalne wartości zmiennej akceptacja_klienta:", unique(iv_data$akceptacja_klienta), "\n")
+
+# Funkcja do znalezienia optymalnej liczby bins dla każdej zmiennej
+find_optimal_bins <- function(data, variable, target, max_bins = 20) {
+  best_iv <- -Inf
+  best_bins <- 10
+  for (bins in 2:max_bins) {
+    iv_result <- Information::create_infotables(data = data[, c(variable, target)], 
+                                                y = target, 
+                                                bins = bins, 
+                                                parallel = FALSE)
+    iv_value <- iv_result$Summary$IV[1]
+    if (iv_value > best_iv) {
+      best_iv <- iv_value
+      best_bins <- bins
+    }
+  }
+  return(list(best_bins = best_bins, best_iv = best_iv))
+}
+
+# Obliczenie optymalnych bins dla każdej zmiennej
+optimal_bins <- list()
+for (var in vars_to_analyze) {
+  result <- find_optimal_bins(iv_data, var, "akceptacja_klienta")
+  optimal_bins[[var]] <- result
+  cat(sprintf("Zmienna: %s, Optymalne bins: %d, IV: %.4f\n", var, result$best_bins, result$best_iv))
+}
+
+# Obliczenie IV z optymalnymi bins
+iv_results <- lapply(vars_to_analyze, function(var) {
+  bins <- optimal_bins[[var]]$best_bins
+  Information::create_infotables(data = iv_data[, c(var, "akceptacja_klienta")], 
+                                 y = "akceptacja_klienta", 
+                                 bins = bins, 
+                                 parallel = FALSE)
+})
+
+# Wyodrębnienie wyników IV
+iv_values <- do.call(rbind, lapply(iv_results, function(res) res$Summary))
+iv_values <- iv_values[order(-iv_values$IV), ]
+
+# Wyświetlenie wyników
+cat("\n=== Wartości IV dla zmiennych (posortowane) ===\n")
+for (i in 1:nrow(iv_values)) {
+  cat(sprintf("%s: %.4f\n", iv_values$Variable[i], iv_values$IV[i]))
+}
+```
+#Tworzymy elegancką tabelę dla wartości IV i optymalnej liczby binsów
+```{r}
+# Konwersja optimal_bins na data frame
+optimal_bins_df <- do.call(rbind, lapply(names(optimal_bins), function(var) {
+  data.frame(Variable = var, 
+             Optimal_Bins = optimal_bins[[var]]$best_bins, 
+             IV = optimal_bins[[var]]$best_iv)
+}))
+
+# Wyświetlenie wyników
+optimal_bins_df <- optimal_bins_df[order(-optimal_bins_df$IV), ]
+print(optimal_bins_df)
+
+
+```
+
+# Wykres IV i liczby koszyków dla danej zmiennej
+```{r}
+# Załadowanie biblioteki ggplot2
+library(ggplot2)
+
+# Utworzenie wykresu kolumnowego
+wykres <- ggplot(optimal_bins_df, aes(x = reorder(Variable, -IV), y = IV, fill = as.factor(Optimal_Bins))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Wartości IV dla zmiennych i liczba optymalnych bins",
+       x = "Zmienna",
+       y = "Information Value (IV)",
+       fill = "Liczba bins") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(wykres)
+```
+
+
