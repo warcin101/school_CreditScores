@@ -1,0 +1,9 @@
+# Ignoruj wszystkie pliki
+*
+
+# Poza tymi plikami (nie ignoruj ich)
+!projekt.ipynb
+!kocham_R_xd.R
+
+# Nie ignoruj pliku .gitignore
+!.gitignore
