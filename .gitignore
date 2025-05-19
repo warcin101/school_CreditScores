@@ -4,6 +4,7 @@
 # Poza tymi plikami (nie ignoruj ich)
 !projekt.ipynb
 !Projekt-3.rmd
-
+!Projekt-MS-MK-i-MW_part2.rmd
 # Nie ignoruj pliku .gitignore
 !.gitignore
+.Rproj.user
